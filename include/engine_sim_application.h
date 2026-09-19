@@ -112,6 +112,9 @@ class EngineSimApplication {
         void changeGear(int direction);
         void setTouchStarterHeld(bool held);
         void setTouchThrottle(double value, bool held);
+        // Select the script that initialize() loads before any simulation or UI
+        // objects exist. This avoids treating a command-line script as a hot reload.
+        void setInitialEngineScript(const std::string &scriptPath);
         // Queued so a picker button cannot destroy the UI tree while its click
         // event is still being dispatched.
         void requestEngineScript(const std::string &relativeScriptPath);

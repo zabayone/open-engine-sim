@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 
@@ -317,8 +318,13 @@ void EngineSimApplication::requestEngineScript(const std::string &relativeScript
     if (!relativeScriptPath.empty()) m_pendingScriptPath = relativeScriptPath;
 }
 
+void EngineSimApplication::setInitialEngineScript(const std::string &scriptPath) {
+    if (!scriptPath.empty()) m_currentScriptPath = scriptPath;
+}
+
 bool EngineSimApplication::loadScript(const std::string &relativeScriptPath) {
 #if defined(ATG_ENGINE_SIM_PIRANHA_ENABLED)
+    std::fprintf(stderr, "Loading engine script: %s\n", relativeScriptPath.c_str());
     es_script::Compiler compiler;
     compiler.initialize(m_assetPath);
     Engine *engine = nullptr;

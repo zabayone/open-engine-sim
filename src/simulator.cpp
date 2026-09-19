@@ -212,6 +212,12 @@ void Simulator::initializeSynthesizer() {
     synthParams.inputBufferSize = 44100;
     synthParams.inputChannelCount = m_engine->getExhaustSystemCount();
     synthParams.inputSampleRate = static_cast<float>(getSimulationFrequency());
+    synthParams.initialAudioParameters.dF_F_mix =
+        static_cast<float>(m_engine->getInitialHighFrequencyGain());
+    synthParams.initialAudioParameters.inputSampleNoise =
+        static_cast<float>(m_engine->getInitialJitter());
+    synthParams.initialAudioParameters.airNoise =
+        static_cast<float>(m_engine->getInitialNoise());
     m_synthesizer.initialize(synthParams);
 }
 

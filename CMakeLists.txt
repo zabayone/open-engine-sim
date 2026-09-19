@@ -164,6 +164,7 @@ if(ENGINE_SIM_BUILD_HEADLESS)
     target_compile_features(engine-sim-headless PRIVATE cxx_std_17)
     target_compile_definitions(engine-sim-headless PRIVATE
         ENGINE_SIM_SOURCE_ASSET_DIRECTORY="${CMAKE_CURRENT_SOURCE_DIR}/assets")
+    install(TARGETS engine-sim-headless RUNTIME DESTINATION bin)
 endif()
 
 if(ENGINE_SIM_BUILD_WEB)

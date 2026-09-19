@@ -51,7 +51,8 @@ endif()
 
 install(FILES "$<TARGET_FILE:SDL3::SDL3>" DESTINATION "${ENGINE_SIM_INSTALL_RUNTIME_DIRECTORY}")
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets/" DESTINATION "${ENGINE_SIM_INSTALL_ASSET_DIRECTORY}"
-    PATTERN ".DS_Store" EXCLUDE)
+    PATTERN ".DS_Store" EXCLUDE
+    PATTERN ".trainer_scripts" EXCLUDE)
 if(TARGET engine-sim-shaders)
     install(FILES
         "${CMAKE_CURRENT_BINARY_DIR}/shaders/engine_sim.vertex.spv"

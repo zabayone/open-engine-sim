@@ -7,10 +7,42 @@
 #include <array>
 #include <chrono>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+
+namespace {
+void writeU16(std::ostream &stream, std::uint16_t value) {
+    const char bytes[] = { static_cast<char>(value), static_cast<char>(value >> 8) };
+    stream.write(bytes, 2);
+}
+
+void writeU32(std::ostream &stream, std::uint32_t value) {
+    const char bytes[] = {
+        static_cast<char>(value), static_cast<char>(value >> 8),
+        static_cast<char>(value >> 16), static_cast<char>(value >> 24),
+    };
+    stream.write(bytes, 4);
+}
+
+void writeWavHeader(std::ostream &output, std::uint32_t dataSize) {
+    output.write("RIFF", 4);
+    writeU32(output, 36 + dataSize);
+    output.write("WAVEfmt ", 8);
+    writeU32(output, 16);
+    writeU16(output, 1);
+    writeU16(output, 1);
+    writeU32(output, 44100);
+    writeU32(output, 44100 * sizeof(std::int16_t));
+    writeU16(output, sizeof(std::int16_t));
+    writeU16(output, 16);
+    output.write("data", 4);
+    writeU32(output, dataSize);
+}
+} // namespace
 
 bool SdlAudioOutput::start(Simulator *simulator) {
     std::lock_guard<std::mutex> lock(m_lifecycleMutex);
-    stopLocked();
+    stopLocked(false);
     if (simulator == nullptr) return false;
     // The synthesizer produces 44.1 kHz PCM. Keep this stream in that native
     // clock domain; SDL handles only the final conversion to the device rate.
@@ -23,6 +55,18 @@ bool SdlAudioOutput::start(Simulator *simulator) {
     m_pcmFrames = 0;
     m_silenceFrames = 0;
     m_peakQueuedBytes = 0;
+    if (!m_recordingPath.empty() && !m_recordingThread.joinable()) {
+        const std::filesystem::path outputPath(m_recordingPath);
+        if (!outputPath.parent_path().empty()) {
+            std::filesystem::create_directories(outputPath.parent_path());
+        }
+        constexpr std::size_t recordingBufferSeconds = 5;
+        m_recordingBuffer.resize(44100 * recordingBufferSeconds);
+        m_recordingRead = 0;
+        m_recordingWrite = 0;
+        m_recordingRunning = true;
+        m_recordingThread = std::thread(&SdlAudioOutput::recordingThread, this);
+    }
     if (m_diagnostics) {
         SDL_AudioSpec source = {}, destination = {};
         if (SDL_GetAudioStreamFormat(m_stream, &source, &destination)) {
@@ -31,7 +75,7 @@ bool SdlAudioOutput::start(Simulator *simulator) {
         }
     }
     if (!SDL_ResumeAudioStreamDevice(m_stream)) {
-        stop();
+        stopLocked(true);
         return false;
     }
     m_running = true;
@@ -63,6 +107,32 @@ void SdlAudioOutput::audioThread() {
     }
 }
 
+void SdlAudioOutput::recordingThread() {
+    std::ofstream output(m_recordingPath, std::ios::binary);
+    if (!output) return;
+    writeWavHeader(output, 0);
+    std::uint64_t writtenSamples = 0;
+    std::array<std::int16_t, 1024> block{};
+    while (m_recordingRunning || m_recordingRead.load() < m_recordingWrite.load()) {
+        const std::uint64_t read = m_recordingRead.load(std::memory_order_relaxed);
+        const std::uint64_t write = m_recordingWrite.load(std::memory_order_acquire);
+        const std::size_t count = static_cast<std::size_t>(
+            std::min<std::uint64_t>(write - read, block.size()));
+        if (count == 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            continue;
+        }
+        for (std::size_t i = 0; i < count; ++i) {
+            block[i] = m_recordingBuffer[(read + i) % m_recordingBuffer.size()];
+        }
+        output.write(reinterpret_cast<const char *>(block.data()), count * sizeof(std::int16_t));
+        writtenSamples += count;
+        m_recordingRead.store(read + count, std::memory_order_release);
+    }
+    output.seekp(0);
+    writeWavHeader(output, static_cast<std::uint32_t>(writtenSamples * sizeof(std::int16_t)));
+}
+
 void SdlAudioOutput::fillStream() {
     if (m_stream == nullptr || m_simulator == nullptr) return;
     constexpr int chunkFrames = 512;
@@ -81,6 +151,18 @@ void SdlAudioOutput::fillStream() {
         // preserves the fixed lead the DirectSound ring buffer provided at
         // startup and during a transient synthesizer underrun.
         const int pcmFrames = m_simulator->readAudioOutput(frames, samples.data());
+        if (!m_recordingBuffer.empty()) {
+            const std::uint64_t write = m_recordingWrite.load(std::memory_order_relaxed);
+            const std::uint64_t read = m_recordingRead.load(std::memory_order_acquire);
+            const std::size_t available = m_recordingBuffer.size()
+                - static_cast<std::size_t>(std::min<std::uint64_t>(
+                    write - read, m_recordingBuffer.size()));
+            const std::size_t count = std::min<std::size_t>(frames, available);
+            for (std::size_t i = 0; i < count; ++i) {
+                m_recordingBuffer[(write + i) % m_recordingBuffer.size()] = samples[i];
+            }
+            m_recordingWrite.store(write + count, std::memory_order_release);
+        }
         m_pcmFrames += std::max(0, pcmFrames);
         m_silenceFrames += frames - std::max(0, pcmFrames);
         const int bytes = frames * static_cast<int>(sizeof(std::int16_t));
@@ -96,12 +178,17 @@ bool SdlAudioOutput::loadImpulseResponse(Synthesizer &synthesizer, const std::st
 
 void SdlAudioOutput::stop() {
     std::lock_guard<std::mutex> lock(m_lifecycleMutex);
-    stopLocked();
+    stopLocked(true);
 }
 
-void SdlAudioOutput::stopLocked() {
+void SdlAudioOutput::stopLocked(bool finalizeRecording) {
     m_running = false;
     if (m_thread.joinable()) m_thread.join();
+    if (finalizeRecording) {
+        m_recordingRunning = false;
+        if (m_recordingThread.joinable()) m_recordingThread.join();
+        m_recordingBuffer.clear();
+    }
     if (m_stream != nullptr) SDL_DestroyAudioStream(m_stream);
     m_stream = nullptr;
     m_simulator = nullptr;

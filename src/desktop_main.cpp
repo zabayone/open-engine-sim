@@ -10,11 +10,14 @@
 
 int main(int argc, char **argv) {
     std::string initialScript;
+    std::string recordingPath;
     for (int i = 1; i < argc; ++i) {
         const std::string argument = argv[i];
         if (argument == "--script" && i + 1 < argc) initialScript = argv[++i];
+        else if (argument == "--record-wav" && i + 1 < argc) recordingPath = argv[++i];
         else if (argument == "--help") {
-            std::printf("Usage: engine-sim-desktop [--script SCRIPT_PATH]\n");
+            std::printf(
+                "Usage: engine-sim-desktop [--script SCRIPT_PATH] [--record-wav OUTPUT_PATH]\n");
             return 0;
         }
         else {
@@ -45,6 +48,7 @@ int main(int argc, char **argv) {
 
     EngineSimApplication application;
     SdlAudioOutput audioOutput;
+    if (!recordingPath.empty()) audioOutput.setRecordingPath(recordingPath);
     if (!initialScript.empty()) application.setInitialEngineScript(initialScript);
     application.initialize(&platform, &renderer, &audioOutput, paths);
     application.run();

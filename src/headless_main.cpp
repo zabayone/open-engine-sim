@@ -14,6 +14,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -198,19 +199,20 @@ std::vector<std::int16_t> render(const Options &options) {
     compiler.initialize(options.assets.string());
     const std::filesystem::path script = options.assets / options.script;
     const std::filesystem::path entry = std::filesystem::temp_directory_path()
-        / "engine-sim-headless-entry.mr";
+        / ("engine-sim-headless-entry-" + std::to_string(std::random_device{}()) + ".mr");
     {
         std::ofstream file(entry);
         file << "import \"" << script.generic_string() << "\"\n\nmain()\n";
     }
-    if (!compiler.compile(entry.string())) {
+    const bool compiledSuccessfully = compiler.compile(entry.string());
+    std::error_code ignored;
+    std::filesystem::remove(entry, ignored);
+    if (!compiledSuccessfully) {
         compiler.destroy();
         throw std::runtime_error("Engine script failed to compile; see error_log.log");
     }
     const es_script::Compiler::Output compiled = compiler.execute();
     compiler.destroy();
-    std::error_code ignored;
-    std::filesystem::remove(entry, ignored);
     if (compiled.engine == nullptr || compiled.vehicle == nullptr || compiled.transmission == nullptr) {
         throw std::runtime_error("Engine script did not produce a complete simulation");
     }

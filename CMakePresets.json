@@ -113,6 +113,17 @@
       }
     },
     {
+      "name": "macos-arm64-headless",
+      "displayName": "macOS arm64 deterministic WAV renderer",
+      "inherits": "macos-arm64",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "BUILD_TESTING": "OFF",
+        "ENGINE_SIM_BUILD_HEADLESS": "ON",
+        "ENGINE_SIM_BUILD_SCRIPTING": "ON"
+      }
+    },
+    {
       "name": "linux-x86_64-desktop",
       "displayName": "Linux x86_64 SDL desktop host",
       "inherits": "linux-x86_64-desktop-base",
@@ -181,6 +192,10 @@
     {
       "name": "macos-arm64-desktop",
       "configurePreset": "macos-arm64-desktop"
+    },
+    {
+      "name": "macos-arm64-headless",
+      "configurePreset": "macos-arm64-headless"
     },
     {
       "name": "linux-x86_64-desktop",

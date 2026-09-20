@@ -1,8 +1,13 @@
 #include "../include/desktop_platform_sdl.h"
+#include <filesystem>
+#include <algorithm>
+#include <fstream>
+#include <memory>
 
 #include <SDL3/SDL.h>
 
 #include <filesystem>
+#include <algorithm>
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/emscripten.h>
@@ -36,6 +41,11 @@ bool DesktopPlatformSdl::initialize(const std::string &title, int width, int hei
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
     windowFlags |= SDL_WINDOW_OPENGL;
 #endif
+    SDL_Rect usable;
+    if (SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable)) {
+        width = std::min(width, static_cast<int>(usable.w * 0.9f));
+        height = std::min(height, static_cast<int>(usable.h * 0.9f));
+    }
     m_window = SDL_CreateWindow(title.c_str(), width, height, windowFlags);
     if (m_window == nullptr) {
         SDL_Quit();
@@ -48,6 +58,7 @@ bool DesktopPlatformSdl::initialize(const std::string &title, int width, int hei
 }
 
 void DesktopPlatformSdl::pumpEvents() {
+    m_textInput.clear();
     m_keysPressed.fill(false);
     m_mousePressed.fill(false);
     m_mouseReleased.fill(false);
@@ -72,7 +83,11 @@ void DesktopPlatformSdl::pumpEvents() {
         case SDL_EVENT_QUIT:
             m_shouldQuit = true;
             break;
+        case SDL_EVENT_TEXT_INPUT:
+            m_textInput += event.text.text;
+            break;
         case SDL_EVENT_KEY_DOWN: {
+            if (event.key.key == SDLK_BACKSPACE) m_textInput += '\b';
             const int scancode = event.key.scancode;
             for (std::size_t i = 0; i < KeyCount; ++i) {
                 if (sdlScancode(static_cast<DesktopKey>(i)) == scancode) {
@@ -104,6 +119,10 @@ void DesktopPlatformSdl::pumpEvents() {
             else if (event.button.button == SDL_BUTTON_RIGHT) button = DesktopMouseButton::Right;
             else break;
             setMousePosition(event.button.x, event.button.y);
+            if (button == DesktopMouseButton::Left) {
+                if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) { m_pressX = m_mouseX; m_pressY = m_mouseY; }
+                else { m_releaseX = m_mouseX; m_releaseY = m_mouseY; }
+            }
             const std::size_t index = mouseButtonIndex(button);
             if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN) m_mousePressed[index] = true;
             else m_mouseReleased[index] = true;
@@ -223,4 +242,30 @@ int DesktopPlatformSdl::sdlScancode(DesktopKey key) {
         SDL_SCANCODE_5
     };
     return scancodes[keyIndex(key)];
+}
+
+void DesktopPlatformSdl::setTextInput(bool enabled) {
+    if (enabled) SDL_StartTextInput(m_window);
+    else SDL_StopTextInput(m_window);
+}
+
+void DesktopPlatformSdl::chooseTrainerFiles(const std::string &session) {
+    // SDL may invoke this callback off-thread. It owns a copy of the session
+    // path, never a UI pointer, and only publishes an atomic request.
+    auto *directory = new std::string(session);
+    SDL_ShowOpenFileDialog([](void *data, const char *const *files, int) {
+        std::unique_ptr<std::string> directory(static_cast<std::string *>(data));
+        if (!files || !files[0]) return;
+        const auto root = std::filesystem::path(*directory);
+        if (!std::filesystem::exists(root) || std::filesystem::exists(root / "request")) return;
+        std::string paths;
+        for (int i = 0; files[i]; ++i) { if (i) paths += '\n'; paths += files[i]; }
+        const char *digits = "0123456789abcdef";
+        std::ofstream output(root / "files.tmp");
+        output << "636c697073\t"; // hex("clips")
+        for (unsigned char c : paths) output << digits[c >> 4] << digits[c & 15];
+        output.close();
+        std::error_code error;
+        std::filesystem::rename(root / "files.tmp", root / "request", error);
+    }, directory, m_window, nullptr, 0, nullptr, true);
 }

@@ -23,6 +23,8 @@ public:
     bool wasMouseButtonPressed(DesktopMouseButton button) const override;
     bool wasMouseButtonReleased(DesktopMouseButton button) const override;
     void mousePosition(int *x, int *y) const override;
+    void mousePressPosition(int *x, int *y) const override { *x = m_pressX; *y = m_pressY; }
+    void mouseReleasePosition(int *x, int *y) const override { *x = m_releaseX; *y = m_releaseY; }
     const std::vector<DesktopTouchEvent> &touchEvents() const override { return m_touchEvents; }
     float mouseWheelY() const override;
 
@@ -30,6 +32,9 @@ public:
     int windowHeight() const override { return m_windowHeight; }
     bool isFullscreen() const override { return m_fullscreen; }
     void setFullscreen(bool enabled) override;
+    std::string textInput() const override { return m_textInput; }
+    void setTextInput(bool enabled) override;
+    void chooseTrainerFiles(const std::string &session) override;
     bool openUrl(const std::string &url) override;
     void *nativeWindowHandle() const override { return m_window; }
     std::uint64_t ticks() const override;
@@ -45,6 +50,7 @@ private:
     static std::size_t mouseButtonIndex(DesktopMouseButton button);
     static int sdlScancode(DesktopKey key);
 
+    std::string m_textInput;
     SDL_Window *m_window;
     std::array<bool, KeyCount> m_keysDown;
     std::array<bool, KeyCount> m_keysPressed;
@@ -56,6 +62,7 @@ private:
     int m_windowHeight;
     int m_windowLogicalWidth;
     int m_windowLogicalHeight;
+    int m_pressX = 0, m_pressY = 0, m_releaseX = 0, m_releaseY = 0;
     int m_mouseX;
     int m_mouseY;
     float m_mouseWheelY;

@@ -29,6 +29,8 @@ void UiManager::destroy() {
     m_app = nullptr;
 }
 
+void UiManager::showTrainerOverlay() { m_overlayHost.present(OverlayHost::Kind::Trainer); }
+
 void UiManager::showControlsOverlay() { m_overlayHost.present(OverlayHost::Kind::Controls); }
 
 void UiManager::showEnginePickerOverlay() { m_overlayHost.present(OverlayHost::Kind::EnginePicker); }
@@ -93,22 +95,28 @@ void UiManager::update(float dt) {
     if (!touchEvents.empty()) return;
 
     if (m_platform->wasMouseButtonPressed(DesktopMouseButton::Left)) {
-        m_dragStart = m_hover;
-        m_mouse_p0 = mousePos;
+        int pressX, pressY;
+        m_platform->mousePressPosition(&pressX, &pressY);
+        const Point pressPosition(static_cast<float>(pressX), static_cast<float>(pressY));
+        m_dragStart = hitTest(pressPosition);
+        m_mouse_p0 = pressPosition;
         if (m_dragStart != nullptr) {
             m_drag_p0 = m_dragStart->getLocalPosition();
-            m_dragStart->onMouseDown(m_dragStart->worldToLocal(mousePos));
+            m_dragStart->onMouseDown(m_dragStart->worldToLocal(pressPosition));
         }
     }
     // Browser event dispatch may deliver a quick press and release in one
     // frame. Handle both transitions rather than discarding the release.
     if (m_platform->wasMouseButtonReleased(DesktopMouseButton::Left)) {
-        UiElement *dragRelease = m_hover;
+        int releaseX, releaseY;
+        m_platform->mouseReleasePosition(&releaseX, &releaseY);
+        const Point releasePosition(static_cast<float>(releaseX), static_cast<float>(releaseY));
+        UiElement *dragRelease = hitTest(releasePosition);
 
-        if (m_dragStart != nullptr) m_dragStart->onMouseUp(m_dragStart->worldToLocal(mousePos));
+        if (m_dragStart != nullptr) m_dragStart->onMouseUp(m_dragStart->worldToLocal(releasePosition));
 
         if (dragRelease != nullptr && m_dragStart == dragRelease) {
-            m_dragStart->onMouseClick(m_dragStart->worldToLocal(mousePos));
+            m_dragStart->onMouseClick(m_dragStart->worldToLocal(releasePosition));
         }
 
         m_dragStart = nullptr;

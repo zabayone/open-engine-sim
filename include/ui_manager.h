@@ -20,6 +20,8 @@ class UiManager {
         void render();
 
         UiElement *getRoot() { return &m_root; }
+        void showTrainerOverlay();
+        void dismissOverlay() { m_overlayHost.dismiss(); }
         void showControlsOverlay();
         void showEnginePickerOverlay();
         bool hasOverlay() const { return m_overlayHost.isVisible(); }

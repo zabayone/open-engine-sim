@@ -25,6 +25,11 @@ void InfoCluster::initialize(EngineSimApplication *app) {
     m_enginePickerButton->m_inverted = true;
     m_enginePickerButton->m_drawFrame = false;
 
+    m_trainerButton = addElement<UiButton>(this);
+    m_trainerButton->m_text = "TRAIN";
+    m_trainerButton->m_fontSize = 16;
+    m_trainerButton->m_inverted = true;
+    m_trainerButton->setVisible(!app->trainerSession().empty());
     m_fullscreenButton = addElement<UiButton>(this);
     m_fullscreenButton->m_text = "Fullscreen";
     m_fullscreenButton->m_fontSize = 16.0f;
@@ -38,6 +43,7 @@ void InfoCluster::update(float dt) {
     Grid grid = { 6, 4 };
     const Bounds titleBounds = grid.get(m_bounds, 1, 0, 5, 2);
     const Bounds toolbar = titleBounds.verticalSplit(0.0f, 0.24f);
+    m_trainerButton->m_bounds = toolbar.horizontalSplit(0.32f, 0.46f);
     m_enginePickerButton->m_bounds = toolbar.horizontalSplit(0.47f, 0.60f);
     m_projectInfoButton->m_bounds = toolbar.horizontalSplit(0.61f, 0.74f);
     m_fullscreenButton->m_bounds = toolbar.horizontalSplit(0.75f, 1.0f);
@@ -46,7 +52,8 @@ void InfoCluster::update(float dt) {
 
 void InfoCluster::signal(UiElement *element, Event event) {
     if (event != Event::Clicked) return;
-    if (element == m_fullscreenButton) m_app->toggleFullscreen();
+    if (element == m_trainerButton) m_app->showTrainerOverlay();
+    else if (element == m_fullscreenButton) m_app->toggleFullscreen();
     else if (element == m_projectInfoButton) m_app->showControlsOverlay();
     else if (element == m_enginePickerButton) m_app->showEnginePickerOverlay();
 }

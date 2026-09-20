@@ -27,6 +27,7 @@ protected:
     Engine *m_engine;
     UiButton *m_projectInfoButton;
     UiButton *m_enginePickerButton;
+    UiButton *m_trainerButton = nullptr;
     UiButton *m_fullscreenButton;
     std::string m_logMessage;
 };

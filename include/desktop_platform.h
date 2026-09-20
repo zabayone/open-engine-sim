@@ -46,6 +46,8 @@ public:
     virtual bool wasMouseButtonPressed(DesktopMouseButton button) const = 0;
     virtual bool wasMouseButtonReleased(DesktopMouseButton button) const = 0;
     virtual void mousePosition(int *x, int *y) const = 0;
+    virtual void mousePressPosition(int *x, int *y) const { mousePosition(x, y); }
+    virtual void mouseReleasePosition(int *x, int *y) const { mousePosition(x, y); }
     virtual const std::vector<DesktopTouchEvent> &touchEvents() const = 0;
     // Wheel movement is frame-local and may be observed by both application
     // shortcuts and the UI. It is reset by pumpEvents(), not consumed by the
@@ -56,6 +58,9 @@ public:
     virtual int windowHeight() const = 0;
     virtual bool isFullscreen() const = 0;
     virtual void setFullscreen(bool enabled) = 0;
+    virtual std::string textInput() const { return {}; }
+    virtual void setTextInput(bool) {}
+    virtual void chooseTrainerFiles(const std::string &) {}
     virtual bool openUrl(const std::string &url) = 0;
     virtual void *nativeWindowHandle() const = 0;
     virtual std::uint64_t ticks() const = 0;

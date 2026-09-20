@@ -102,7 +102,12 @@ bool EngineSimApplication::tick() {
     constexpr std::uint64_t renderIntervalMs = 50;
 #endif
     m_platform->pumpEvents();
-    if (m_platform->shouldQuit() || m_platform->wasKeyPressed(DesktopKey::Escape)) return false;
+    if (m_platform->shouldQuit()) return false;
+    if (m_platform->wasKeyPressed(DesktopKey::Escape)) {
+        if (m_uiManager.hasOverlay()) m_uiManager.dismissOverlay();
+        else return false;
+    }
+    pollTrainerCommands();
     const std::uint64_t now = m_platform->ticks();
         // Drive physics from elapsed time so synthesis remains in step with
         // wall time and does not accumulate audio latency.
@@ -112,14 +117,16 @@ bool EngineSimApplication::tick() {
         m_averageFramerate = 0.9f * m_averageFramerate + 0.1f / dt;
     }
 
+    if (!m_uiManager.hasOverlay()) {
     if (m_platform->wasKeyPressed(DesktopKey::F)) toggleFullscreen();
     if (m_platform->wasKeyPressed(DesktopKey::Tab)) m_screen = (m_screen + 1) % 3;
     if (m_platform->wasKeyPressed(DesktopKey::Return)) loadScript(m_currentScriptPath);
+    }
     m_screenWidth = m_platform->windowWidth();
     m_screenHeight = m_platform->windowHeight();
 
     if (dt > 0.0f) {
-        processEngineInput(dt);
+        if (!m_uiManager.hasOverlay()) processEngineInput(dt);
         if (!m_paused || m_platform->wasKeyPressed(DesktopKey::Right)) process(dt);
     }
     if (m_engineView != nullptr) m_uiManager.update(dt);
@@ -594,4 +601,43 @@ void EngineSimApplication::loadEngine(Engine *engine, Vehicle *vehicle, Transmis
     if (m_audioOutput != nullptr) m_audioOutput->start(m_simulator);
     createObjects(engine);
     refreshUserInterface();
+}
+
+void EngineSimApplication::showTrainerOverlay() { m_uiManager.showTrainerOverlay(); }
+
+void EngineSimApplication::pollTrainerCommands() {
+    if (m_trainerSession.empty() || m_platform->ticks() - m_lastTrainerPoll < 100) return;
+    m_lastTrainerPoll = m_platform->ticks();
+    const auto path = std::filesystem::path(m_trainerSession) / "command";
+    if (!std::filesystem::exists(path)) return;
+    try {
+        std::ifstream input(path);
+        std::string operation, argument;
+        std::getline(input, operation, '\t');
+        std::getline(input, argument);
+        input.close();
+        const auto decode = [](const std::string &value) {
+            std::string decoded;
+            for (size_t i = 0; i + 1 < value.size(); i += 2)
+                decoded += static_cast<char>(std::stoi(value.substr(i, 2), nullptr, 16));
+            return decoded;
+        };
+        operation = decode(operation); argument = decode(argument);
+        std::filesystem::remove(path);
+        if (operation == "load") requestEngineScript(argument);
+        else if (trainerCommand) trainerCommand(operation, argument);
+        std::ofstream feedback(std::filesystem::path(m_trainerSession) / "feedback.tmp");
+        feedback << "OK";
+        feedback.close();
+        std::filesystem::rename(std::filesystem::path(m_trainerSession) / "feedback.tmp",
+            std::filesystem::path(m_trainerSession) / "feedback");
+    } catch (const std::exception &error) {
+        if (m_infoCluster) m_infoCluster->setLogMessage(error.what());
+        std::ofstream feedback(std::filesystem::path(m_trainerSession) / "feedback.tmp");
+        feedback << "Error: " << error.what();
+        feedback.close();
+        std::error_code ignored;
+        std::filesystem::rename(std::filesystem::path(m_trainerSession) / "feedback.tmp",
+            std::filesystem::path(m_trainerSession) / "feedback", ignored);
+    }
 }

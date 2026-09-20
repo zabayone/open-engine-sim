@@ -75,6 +75,7 @@ private:
 
 void OverlayHost::initialize(EngineSimApplication *app) {
     UiElement::initialize(app);
+    m_engineButtons.clear();
     m_closeButton = addElement<UiButton>(this);
     m_closeButton->m_text = "CLOSE";
     m_closeButton->m_fontSize = 16.0f;
@@ -110,6 +111,7 @@ void OverlayHost::initialize(EngineSimApplication *app) {
         button->m_inverted = true;
         m_engineButtons.push_back(button);
     }
+    m_trainer = addElement<TrainerPanel>(this);
     dismiss();
 }
 
@@ -131,6 +133,7 @@ void OverlayHost::present(Kind kind) {
         dismiss();
         return;
     }
+    if (m_trainer) m_trainer->cancelEditing();
     m_kind = kind;
     m_pickerScrollOffset = 0.0f;
     setVisible(true);
@@ -138,15 +141,17 @@ void OverlayHost::present(Kind kind) {
 }
 
 void OverlayHost::dismiss() {
+    if (m_trainer) m_trainer->cancelEditing();
     m_kind = Kind::None;
     setVisible(false);
     setChildrenVisible();
 }
 
 void OverlayHost::setChildrenVisible() {
+    if (m_trainer) m_trainer->setVisible(m_kind == Kind::Trainer);
     const bool controls = m_kind == Kind::Controls;
     const bool picker = m_kind == Kind::EnginePicker;
-    if (m_closeButton != nullptr) m_closeButton->setVisible(controls || picker);
+    if (m_closeButton != nullptr) m_closeButton->setVisible(m_kind != Kind::None);
     if (m_githubButton != nullptr) m_githubButton->setVisible(controls);
     if (m_issuesButton != nullptr) m_issuesButton->setVisible(controls);
     if (m_pickerScrollUpButton != nullptr) m_pickerScrollUpButton->setVisible(picker);
@@ -157,13 +162,20 @@ void OverlayHost::setChildrenVisible() {
 void OverlayHost::update(float dt) {
     if (m_app->getPlatform()->wasKeyPressed(DesktopKey::F1)) present(Kind::Controls);
     if (m_app->getPlatform()->wasKeyPressed(DesktopKey::F2)) present(Kind::EnginePicker);
+    if (!m_app->trainerSession().empty() && m_app->getPlatform()->wasKeyPressed(DesktopKey::F3)) present(Kind::Trainer);
     if (m_kind == Kind::None) return;
 
     const Bounds viewport = viewportBounds();
     const Bounds panel = dialogBounds();
     m_mouseBounds = viewport;
     m_checkMouse = true;
-    if (m_kind == Kind::Controls) layoutControls(panel);
+    if (m_kind == Kind::Trainer) {
+        const Bounds content = panel.inset(20);
+        m_closeButton->m_fontSize = 18 * m_app->getScreenWidth() / 1440.0f;
+        m_closeButton->m_bounds = content.verticalSplit(0.92f, 1.0f).horizontalSplit(0.8f, 1.0f);
+        m_trainer->m_bounds = content.verticalSplit(0.0f, 0.90f);
+    }
+    else if (m_kind == Kind::Controls) layoutControls(panel);
     else layoutEnginePicker(panel);
     UiElement::update(dt);
 }
@@ -250,9 +262,10 @@ void OverlayHost::signal(UiElement *element, Event event) {
     }
 }
 
-void OverlayHost::onMouseClick(const Point &) { dismiss(); }
+void OverlayHost::onMouseClick(const Point &) { if (m_kind != Kind::Trainer) dismiss(); }
 
 void OverlayHost::onMouseScroll(int mouseScroll) {
+    if (m_kind == Kind::Trainer) { m_trainer->onMouseScroll(mouseScroll); return; }
     if (m_kind != Kind::EnginePicker) return;
     m_pickerScrollOffset = std::clamp(m_pickerScrollOffset - mouseScroll * 45.0f, 0.0f, m_pickerMaxScrollOffset);
 }
@@ -273,7 +286,10 @@ void OverlayHost::render() {
     drawBox(viewport, scrim, -0x20);
     drawFrame(panel, 2.0f, foreground, background, true, -0x10);
 
-    if (m_kind == Kind::EnginePicker) {
+    if (m_kind == Kind::Trainer) {
+        drawAlignedText("ENGINE SOUND LAB / TRAINER", content.verticalSplit(0.92f, 1.0f), 28 * m_app->getScreenWidth() / 1440.0f, Bounds::lm, Bounds::lm);
+    }
+    else if (m_kind == Kind::EnginePicker) {
         const Bounds listBounds = content.verticalSplit(0.12f, 0.84f);
         const int columns = listBounds.width() >= 700.0f ? 3 : 2;
         drawAlignedText("SELECT ENGINE", content.verticalSplit(0.90f, 0.98f), 28.0f, Bounds::lm, Bounds::lm);

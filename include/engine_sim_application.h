@@ -24,6 +24,7 @@
 #include "desktop_platform.h"
 
 #include <string>
+#include <functional>
 #include "runtime_paths.h"
 #include "renderer.h"
 #include "text_renderer.h"
@@ -107,6 +108,11 @@ class EngineSimApplication {
         void toggleDynamometer();
         void toggleDynamometerHold();
         void toggleFullscreen();
+        void showTrainerOverlay();
+        void setTrainerSession(const std::string &path) { m_trainerSession = path; }
+        const std::string &trainerSession() const { return m_trainerSession; }
+        std::function<void(const std::string &, const std::string &)> trainerCommand;
+        void pollTrainerCommands();
         void showControlsOverlay();
         void showEnginePickerOverlay();
         void changeGear(int direction);
@@ -154,6 +160,8 @@ class EngineSimApplication {
         Renderer *m_renderer;
         AudioOutput *m_audioOutput;
 
+        std::string m_trainerSession;
+        std::uint64_t m_lastTrainerPoll = 0;
         std::string m_assetPath;
         std::string m_currentScriptPath = "main.mr";
         std::string m_pendingScriptPath;

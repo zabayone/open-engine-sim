@@ -3,6 +3,7 @@
 
 #include "engine_catalog.h"
 #include "ui_button.h"
+#include "trainer_panel.h"
 
 #include <vector>
 
@@ -11,7 +12,8 @@ public:
     enum class Kind {
         None,
         Controls,
-        EnginePicker
+        EnginePicker,
+        Trainer
     };
 
     void initialize(EngineSimApplication *app) override;
@@ -26,6 +28,7 @@ public:
     Kind kind() const { return m_kind; }
 
 private:
+    TrainerPanel *m_trainer = nullptr;
     UiButton *m_closeButton = nullptr;
     UiButton *m_githubButton = nullptr;
     UiButton *m_issuesButton = nullptr;

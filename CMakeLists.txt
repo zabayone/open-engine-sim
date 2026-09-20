@@ -127,6 +127,7 @@ add_library(engine-sim-visualization STATIC
     src/mixer_cluster.cpp
     src/oscilloscope.cpp
     src/oscilloscope_cluster.cpp
+    src/trainer_panel.cpp
     src/overlay_host.cpp
     src/performance_cluster.cpp
     src/piston_object.cpp

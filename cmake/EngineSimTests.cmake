@@ -29,7 +29,7 @@ add_executable(engine-sim-core-tests
     src/authored_mesh_library.cpp
     src/engine_catalog.cpp)
 if(ENGINE_SIM_BUILD_SCRIPTING)
-    target_sources(engine-sim-core-tests PRIVATE test/script_compile_test.cpp)
+    target_sources(engine-sim-core-tests PRIVATE test/script_compile_test.cpp test/engine_startup_test.cpp)
     target_link_libraries(engine-sim-core-tests PRIVATE engine-sim-scripting)
     target_compile_definitions(engine-sim-core-tests PRIVATE
         ENGINE_SIM_TEST_ASSET_DIRECTORY="${CMAKE_CURRENT_SOURCE_DIR}/assets"

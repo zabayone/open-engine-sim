@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iomanip>
 #include <limits>
 #include <random>
 #include <stdexcept>
@@ -24,6 +25,7 @@ struct Options {
     std::filesystem::path assets = ENGINE_SIM_SOURCE_ASSET_DIRECTORY;
     std::filesystem::path script = "engines/atg-video-2/07_gm_ls.mr";
     std::filesystem::path output = "engine-sim-render.wav";
+    std::filesystem::path rpmReport;
     double rpm = 3000.0;
     double duration = 2.0;
     double warmup = 1.0;
@@ -147,6 +149,7 @@ Options parseOptions(int argc, char **argv) {
         if (argument == "--assets") options.assets = value();
         else if (argument == "--script") options.script = value();
         else if (argument == "--output") options.output = value();
+        else if (argument == "--rpm-report") options.rpmReport = value();
         else if (argument == "--rpm") options.rpm = std::stod(value());
         else if (argument == "--duration") options.duration = std::stod(value());
         else if (argument == "--warmup") options.warmup = std::stod(value());
@@ -159,6 +162,7 @@ Options parseOptions(int argc, char **argv) {
                 << "  --assets PATH          Asset directory\n"
                 << "  --script PATH          Engine script relative to assets\n"
                 << "  --output PATH          Output mono PCM16 WAV\n"
+                << "  --rpm-report PATH      Write measured RPM/audio timing JSON\n"
                 << "  --rpm VALUE            Dynamometer hold RPM\n"
                 << "  --duration SECONDS     Captured duration\n"
                 << "  --warmup SECONDS       Uncaptured settling time\n"
@@ -170,7 +174,10 @@ Options parseOptions(int argc, char **argv) {
             throw std::runtime_error("Unknown argument: " + argument);
         }
     }
-    if (options.rpm <= 0 || options.duration <= 0 || options.warmup < 0
+    if (!std::isfinite(options.rpm) || !std::isfinite(options.duration)
+        || !std::isfinite(options.warmup) || !std::isfinite(options.speedControl)
+        || !std::isfinite(options.volume) || options.duration * options.sampleRate < 1
+        || options.rpm <= 0 || options.duration <= 0 || options.warmup < 0
         || options.sampleRate <= 0 || options.speedControl < 0 || options.speedControl > 1
         || options.volume < 0 || options.volume > 1) {
         throw std::runtime_error("Invalid numeric option");
@@ -241,39 +248,55 @@ std::vector<std::int16_t> render(const Options &options) {
     simulator->m_dyno.m_rotationSpeed = units::rpm(options.rpm);
     simulator->synthesizer().discardAudioOutput();
 
-    constexpr double blockDuration = 0.01;
-    const int blockSamples = static_cast<int>(std::lround(options.sampleRate * blockDuration));
-    const int blockCount = static_cast<int>(
-        std::lround((options.warmup + options.duration) / blockDuration));
-    const int warmupBlocks = static_cast<int>(std::lround(options.warmup / blockDuration));
+    // Use integer physics steps and retain only PCM actually produced.
+    // Per-block zero padding would change the audio clock and apparent pitch.
+    const double frequency = simulator->getSimulationFrequency();
+    const double blockDuration = std::max(1.0, std::round(frequency * 0.01)) / frequency;
+    const size_t requestedSamples = static_cast<size_t>(std::llround(options.duration * options.sampleRate));
+    const size_t warmupSamples = static_cast<size_t>(std::llround(options.warmup * options.sampleRate));
+    size_t discardedSamples = 0;
     std::vector<std::int16_t> audio;
-    audio.reserve(static_cast<std::size_t>(options.duration * options.sampleRate));
-    std::vector<std::int16_t> block(static_cast<std::size_t>(blockSamples));
+    audio.reserve(requestedSamples);
+    std::vector<std::int16_t> block(1024);
     double rpmSum = 0.0;
     double rpmMinimum = std::numeric_limits<double>::max();
     double rpmMaximum = 0.0;
-    int measuredBlocks = 0;
-
-    for (int blockIndex = 0; blockIndex < blockCount; ++blockIndex) {
+    size_t measuredSamples = 0;
+    while (audio.size() < requestedSamples) {
         simulator->startFrame(blockDuration);
         while (simulator->simulateStep()) { }
         simulator->endFrame();
         simulator->synthesizer().pumpAudioRendering();
-        simulator->readAudioOutput(blockSamples, block.data());
-        if (blockIndex >= warmupBlocks) {
-            audio.insert(audio.end(), block.begin(), block.end());
+        const int produced = simulator->readAudioOutput(static_cast<int>(block.size()), block.data());
+        if (produced <= 0) throw std::runtime_error("Synthesizer produced no PCM samples");
+        const size_t skip = std::min(static_cast<size_t>(produced), warmupSamples - discardedSamples);
+        discardedSamples += skip;
+        const size_t count = std::min(static_cast<size_t>(produced) - skip, requestedSamples - audio.size());
+        if (count) {
+            audio.insert(audio.end(), block.begin() + skip, block.begin() + skip + count);
             const double rpm = engine->getRpm();
-            rpmSum += rpm;
+            rpmSum += rpm * count;
             rpmMinimum = std::min(rpmMinimum, rpm);
             rpmMaximum = std::max(rpmMaximum, rpm);
-            ++measuredBlocks;
+            measuredSamples += count;
         }
     }
-
-    if (measuredBlocks > 0) {
-        std::cout << "Engine RPM: mean=" << rpmSum / measuredBlocks
-                  << ", min=" << rpmMinimum
-                  << ", max=" << rpmMaximum << "\n";
+    const double meanRpm = rpmSum / measuredSamples;
+    std::cout << "Engine RPM: mean=" << meanRpm << ", min=" << rpmMinimum << ", max=" << rpmMaximum << "\n";
+    if (!options.rpmReport.empty()) {
+        std::ofstream report(options.rpmReport);
+        if (!report) throw std::runtime_error("Cannot write RPM report");
+        report << std::setprecision(12)
+            << "{\"requested_rpm\":" << options.rpm
+            << ",\"mean_rpm\":" << meanRpm
+            << ",\"minimum_rpm\":" << rpmMinimum
+            << ",\"maximum_rpm\":" << rpmMaximum
+            << ",\"cylinders\":" << engine->getCylinderCount()
+            << ",\"firing_frequency_hz\":" << meanRpm * engine->getCylinderCount() / 120.0
+            << ",\"sample_rate\":" << options.sampleRate
+            << ",\"sample_count\":" << audio.size()
+            << ",\"duration\":" << static_cast<double>(audio.size()) / options.sampleRate
+            << ",\"speed_control\":" << options.speedControl << "}\n";
     }
 
     simulator->releaseSimulation();

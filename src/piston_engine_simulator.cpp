@@ -176,7 +176,7 @@ void PistonEngineSimulator::loadSimulation(Engine *engine, Vehicle *vehicle, Tra
     m_system->addConstraint(&m_dyno);
 
     m_starterMotor.connectCrankshaft(m_engine->getOutputCrankshaft());
-    m_starterMotor.m_maxTorque = m_engine->getStarterTorque();
+    m_starterMotor.sizeForDisplacement(m_engine->getStarterTorque(), m_engine->getDisplacement());
     m_starterMotor.m_rotationSpeed = -m_engine->getStarterSpeed();
     m_system->addConstraint(&m_starterMotor);
 

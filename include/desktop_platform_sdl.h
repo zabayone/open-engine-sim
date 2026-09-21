@@ -35,6 +35,7 @@ public:
     std::string textInput() const override { return m_textInput; }
     void setTextInput(bool enabled) override;
     void chooseTrainerFiles(const std::string &session) override;
+    void chooseTrainerDestination(const std::string &session, const std::string &key, const std::string &name, bool folder) override;
     bool openUrl(const std::string &url) override;
     void *nativeWindowHandle() const override { return m_window; }
     std::uint64_t ticks() const override;

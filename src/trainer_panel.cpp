@@ -154,6 +154,8 @@ void TrainerPanel::signal(UiElement *element, Event event) {
             m_editValue.clear();
             m_notice = "Type replacement value; Enter saves. Blank clears optional values.";
             m_app->getPlatform()->setTextInput(true);
+        } else if (row.kind == "save" || row.kind == "folder") {
+            m_app->getPlatform()->chooseTrainerDestination(m_app->trainerSession(), row.key, row.value, row.kind == "folder");
         } else if (row.kind == "files") {
             m_app->getPlatform()->chooseTrainerFiles(m_app->trainerSession());
         } else submit(row.key, row.value);

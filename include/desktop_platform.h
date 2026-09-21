@@ -61,6 +61,7 @@ public:
     virtual std::string textInput() const { return {}; }
     virtual void setTextInput(bool) {}
     virtual void chooseTrainerFiles(const std::string &) {}
+    virtual void chooseTrainerDestination(const std::string &, const std::string &, const std::string &, bool) {}
     virtual bool openUrl(const std::string &url) = 0;
     virtual void *nativeWindowHandle() const = 0;
     virtual std::uint64_t ticks() const = 0;

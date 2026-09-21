@@ -269,3 +269,31 @@ void DesktopPlatformSdl::chooseTrainerFiles(const std::string &session) {
         std::filesystem::rename(root / "files.tmp", root / "request", error);
     }, directory, m_window, nullptr, 0, nullptr, true);
 }
+
+void DesktopPlatformSdl::chooseTrainerDestination(const std::string &session,
+    const std::string &key, const std::string &name, bool folder) {
+    struct Request { std::string session, key; };
+    auto *request = new Request{session, key};
+    const auto callback = [](void *data, const char *const *files, int) {
+        std::unique_ptr<Request> request(static_cast<Request *>(data));
+        if (!files || !files[0]) return;
+        const auto root = std::filesystem::path(request->session);
+        if (!std::filesystem::exists(root) || std::filesystem::exists(root / "request")) return;
+        const auto encode = [](const std::string &value) {
+            const char *digits = "0123456789abcdef";
+            std::string result;
+            for (unsigned char c : value) { result += digits[c >> 4]; result += digits[c & 15]; }
+            return result;
+        };
+        std::ofstream output(root / "destination.tmp");
+        output << encode(request->key) << '\t' << encode(files[0]);
+        output.close();
+        std::error_code error;
+        std::filesystem::rename(root / "destination.tmp", root / "request", error);
+    };
+    if (folder) SDL_ShowOpenFolderDialog(callback, request, m_window, nullptr, false);
+    else {
+        static const SDL_DialogFileFilter filters[] = {{ "WAV audio", "wav" }};
+        SDL_ShowSaveFileDialog(callback, request, m_window, filters, 1, name.c_str());
+    }
+}

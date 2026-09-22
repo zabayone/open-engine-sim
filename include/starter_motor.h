@@ -10,7 +10,7 @@ public:
     StarterMotor();
     virtual ~StarterMotor();
 
-    void sizeForDisplacement(double authoredTorque, double displacement);
+    void sizeForDisplacement(double authoredTorque, double displacement, int cylinders);
     void connectCrankshaft(Crankshaft *crankshaft);
     virtual void calculate(Output *output, atg_scs::SystemState *state);
 

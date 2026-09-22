@@ -48,8 +48,10 @@ void StarterMotor::calculate(Output *output, atg_scs::SystemState *state) {
 void StarterMotor::sizeForDisplacement(double authoredTorque, double displacement) {
     // Large/optimized engines can outgrow a template's starter. Size the
     // motor for cranking compression, retaining stronger authored starters.
+    // A 16 L V8 enlarged from the 5.3 L template needs this reserve to turn
+    // through compression before combustion can sustain rotation.
     // This changes only the held starter's torque capacity, never running RPM.
-    constexpr double crankingTorqueNmPerLitre = 20.0;
+    constexpr double crankingTorqueNmPerLitre = 60.0;
     m_maxTorque = std::max(authoredTorque,
         units::torque(crankingTorqueNmPerLitre * units::convert(displacement, units::L), units::Nm));
 }

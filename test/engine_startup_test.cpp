@@ -35,6 +35,7 @@ TEST(EngineStartup, LargeEnginesKeepFiringAfterTwoSecondCrank) {
         {"engines/atg-video-2/07_gm_ls.mr", "3.78", "3.622", "90", "0.996", 8, "inch", false},
         {"engines/atg-video-2/01_subaru_ej25_eh.mr", "99.5", "79", "67", "0.9978", 4, "mm", false},
         {"engines/atg-video-1/05_honda_vtec.mr", "81", "87.2", "41.6", "0.9989", 4, "mm", true},
+        {"engines/atg-video-2/03_2jz.mr", "86.0", "86.0", "50", "0.9965", 6, "mm", false},
     };
     std::vector<std::filesystem::path> scripts = {
         assets / "engines/atg-video-2/11_merlin_v12.mr",
@@ -52,16 +53,19 @@ TEST(EngineStartup, LargeEnginesKeepFiringAfterTwoSecondCrank) {
         const double ratio = 16000.0 / baseCc;
         const double scale = std::cbrt(ratio);
         const auto replace = [&](const std::string &oldValue, const std::string &newValue) {
-            const size_t offset = source.find(oldValue);
+            size_t offset = source.find(oldValue);
             EXPECT_NE(offset, std::string::npos);
-            if (offset != std::string::npos) source.replace(offset, oldValue.size(), newValue);
+            while (offset != std::string::npos) {
+                source.replace(offset, oldValue.size(), newValue);
+                offset = source.find(oldValue, offset + newValue.size());
+            }
         };
         replace("label bore(" + std::string(engine.boreText) + " * units." + engine.unit + ")",
             "label bore(" + std::to_string(bore * scale) + " * units." + engine.unit + ")");
         replace("label stroke(" + std::string(engine.strokeText) + " * units." + engine.unit + ")",
             "label stroke(" + std::to_string(stroke * scale) + " * units." + engine.unit + ")");
-        replace("input chamber_volume: " + std::string(engine.chamberText) + " * units.cc",
-            "input chamber_volume: " + std::to_string(std::stod(engine.chamberText) * ratio) + " * units.cc");
+        replace("chamber_volume: " + std::string(engine.chamberText) + " * units.cc",
+            "chamber_volume: " + std::to_string(std::stod(engine.chamberText) * ratio) + " * units.cc");
         const double idle = std::acos(std::min(1.0, std::cos(std::stod(engine.idleText) * pi / 2) * ratio)) * 2 / pi;
         replace("idle_throttle_plate_position: " + std::string(engine.idleText),
             "idle_throttle_plate_position: " + std::to_string(idle));

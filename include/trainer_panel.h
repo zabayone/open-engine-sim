@@ -17,7 +17,7 @@ public:
 private:
     struct Row { std::string kind, key, label, value; };
     static constexpr int PageSize = 12;
-    std::array<UiButton *, 6> m_navigation{};
+    std::array<UiButton *, 4> m_navigation{};
     std::vector<Row> m_navigationRows;
     std::array<UiButton *, PageSize> m_buttons{};
     UiButton *m_previous = nullptr;

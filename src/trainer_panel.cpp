@@ -84,9 +84,9 @@ void TrainerPanel::update(float dt) {
                     for (auto &value : values) { std::getline(fields, value, '\t'); value = unhex(value); }
                     rows.push_back({values[0], values[1], values[2], values[3]});
                 }
-                if (rows.size() >= 6) {
-                    m_navigationRows.assign(rows.begin(), rows.begin() + 6);
-                    rows.erase(rows.begin(), rows.begin() + 6);
+                if (rows.size() >= m_navigation.size()) {
+                    m_navigationRows.assign(rows.begin(), rows.begin() + m_navigation.size());
+                    rows.erase(rows.begin(), rows.begin() + m_navigation.size());
                 }
                 m_rows = std::move(rows);
                 m_lastView = view;
@@ -99,8 +99,8 @@ void TrainerPanel::update(float dt) {
     const Bounds area = m_bounds.inset(layout.inset);
     for (size_t i = 0; i < m_navigation.size(); ++i) {
         auto *button = m_navigation[i];
-        button->m_bounds = Bounds(area.width() / 6 - layout.gap, 38 * scale,
-            {area.left() + i * area.width() / 6, area.top()}, Bounds::tl);
+        button->m_bounds = Bounds(area.width() / m_navigation.size() - layout.gap, 38 * scale,
+            {area.left() + i * area.width() / m_navigation.size(), area.top()}, Bounds::tl);
         button->m_text = i < m_navigationRows.size() ? m_navigationRows[i].label : "";
         button->m_fontSize = 16 * scale;
     }

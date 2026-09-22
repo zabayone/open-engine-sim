@@ -29,7 +29,7 @@ namespace es_script {
 
     template <typename Type>
     extern inline const piranha::ChannelType *LookupChannelType() {
-        static_assert(false, "Invalid type lookup");
+        static_assert(sizeof(Type) == 0, "Invalid type lookup");
         return nullptr;
     }
 

@@ -287,7 +287,7 @@ void OverlayHost::render() {
     drawFrame(panel, 2.0f, foreground, background, true, -0x10);
 
     if (m_kind == Kind::Trainer) {
-        drawAlignedText("ENGINE SOUND LAB / TRAINER", content.verticalSplit(0.92f, 1.0f), 28 * m_app->getScreenWidth() / 1440.0f, Bounds::lm, Bounds::lm);
+        drawAlignedText("ENGINE SOUND LAB / ENGINE WORKSPACE", content.verticalSplit(0.92f, 1.0f), 28 * m_app->getScreenWidth() / 1440.0f, Bounds::lm, Bounds::lm);
     }
     else if (m_kind == Kind::EnginePicker) {
         const Bounds listBounds = content.verticalSplit(0.12f, 0.84f);

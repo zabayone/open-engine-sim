@@ -26,7 +26,7 @@ void InfoCluster::initialize(EngineSimApplication *app) {
     m_enginePickerButton->m_drawFrame = false;
 
     m_trainerButton = addElement<UiButton>(this);
-    m_trainerButton->m_text = "TRAIN";
+    m_trainerButton->m_text = "ENGINE";
     m_trainerButton->m_fontSize = 16;
     m_trainerButton->m_inverted = true;
     m_trainerButton->setVisible(!app->trainerSession().empty());

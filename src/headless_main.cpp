@@ -4,6 +4,7 @@
 #include "../include/transmission.h"
 #include "../include/units.h"
 #include "../include/vehicle.h"
+#include "../include/wav_postprocess.h"
 #include "../scripting/include/compiler.h"
 
 #include <algorithm>
@@ -32,6 +33,7 @@ struct Options {
     double speedControl = 0.1;
     double volume = 0.25;
     int sampleRate = 44100;
+    bool edgeFade = true;
 };
 
 std::uint16_t readU16(std::istream &stream) {
@@ -156,6 +158,7 @@ Options parseOptions(int argc, char **argv) {
         else if (argument == "--speed-control") options.speedControl = std::stod(value());
         else if (argument == "--volume") options.volume = std::stod(value());
         else if (argument == "--sample-rate") options.sampleRate = std::stoi(value());
+        else if (argument == "--no-edge-fade") options.edgeFade = false;
         else if (argument == "--help") {
             std::cout
                 << "Usage: engine-sim-headless [options]\n"
@@ -168,7 +171,8 @@ Options parseOptions(int argc, char **argv) {
                 << "  --warmup SECONDS       Uncaptured settling time\n"
                 << "  --speed-control VALUE  Engine speed-control input in [0, 1]\n"
                 << "  --volume VALUE         Linear output gain in [0, 1]\n"
-                << "  --sample-rate VALUE    Output sample rate\n";
+                << "  --sample-rate VALUE    Output sample rate\n"
+                << "  --no-edge-fade        Keep unfaded PCM for loop construction\n";
             std::exit(0);
         } else {
             throw std::runtime_error("Unknown argument: " + argument);
@@ -312,7 +316,15 @@ std::vector<std::int16_t> render(const Options &options) {
 int main(int argc, char **argv) {
     try {
         const Options options = parseOptions(argc, argv);
-        const auto samples = render(options);
+        auto samples = render(options);
+        wav_postprocess::Bandpass bandpass(options.sampleRate);
+        const std::size_t fade = wav_postprocess::edgeSamples(options.sampleRate);
+        for (std::size_t index = 0; index < samples.size(); ++index) {
+            const double filtered = bandpass.process(samples[index]);
+            const double gain = options.edgeFade
+                ? wav_postprocess::edgeGain(index, samples.size(), fade) : 1.0;
+            samples[index] = wav_postprocess::pcm16(filtered * gain);
+        }
         writeMonoPcm16Wav(options.output, samples, options.sampleRate);
         std::cout << "Rendered " << samples.size() << " samples to " << options.output << "\n";
         return 0;

@@ -1,6 +1,7 @@
 #include "../include/sdl_audio_output.h"
 #include "../include/sdl_audio_util.h"
 #include "../include/simulator.h"
+#include "../include/wav_postprocess.h"
 
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -113,6 +114,9 @@ void SdlAudioOutput::recordingThread() {
     writeWavHeader(output, 0);
     std::uint64_t writtenSamples = 0;
     std::array<std::int16_t, 1024> block{};
+    wav_postprocess::Bandpass bandpass(44100);
+    const std::size_t fade = wav_postprocess::edgeSamples(44100);
+    std::vector<std::int16_t> tail(fade);
     while (m_recordingRunning || m_recordingRead.load() < m_recordingWrite.load()) {
         const std::uint64_t read = m_recordingRead.load(std::memory_order_relaxed);
         const std::uint64_t write = m_recordingWrite.load(std::memory_order_acquire);
@@ -123,11 +127,24 @@ void SdlAudioOutput::recordingThread() {
             continue;
         }
         for (std::size_t i = 0; i < count; ++i) {
-            block[i] = m_recordingBuffer[(read + i) % m_recordingBuffer.size()];
+            const std::int16_t filtered = bandpass.process(
+                m_recordingBuffer[(read + i) % m_recordingBuffer.size()]);
+            tail[(writtenSamples + i) % fade] = filtered;
+            const double startGain = wav_postprocess::fadeInGain(writtenSamples + i, fade);
+            block[i] = wav_postprocess::pcm16(filtered * startGain);
         }
         output.write(reinterpret_cast<const char *>(block.data()), count * sizeof(std::int16_t));
         writtenSamples += count;
         m_recordingRead.store(read + count, std::memory_order_release);
+    }
+    const std::size_t tailCount = static_cast<std::size_t>(
+        std::min<std::uint64_t>(writtenSamples, fade));
+    output.seekp(44 + (writtenSamples - tailCount) * sizeof(std::int16_t));
+    for (std::size_t i = 0; i < tailCount; ++i) {
+        const std::size_t index = writtenSamples - tailCount + i;
+        const std::int16_t sample = wav_postprocess::pcm16(
+            tail[index % fade] * wav_postprocess::edgeGain(index, writtenSamples, fade));
+        output.write(reinterpret_cast<const char *>(&sample), sizeof(sample));
     }
     output.seekp(0);
     writeWavHeader(output, static_cast<std::uint32_t>(writtenSamples * sizeof(std::int16_t)));

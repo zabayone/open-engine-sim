@@ -23,6 +23,7 @@ add_executable(engine-sim-core-tests
     test/shaders_test.cpp
     test/synthesizer_tests.cpp
     test/text_renderer_test.cpp
+    test/wav_postprocess_test.cpp
     test/authored_mesh_library_test.cpp
     test/engine_catalog_test.cpp
     src/text_renderer.cpp

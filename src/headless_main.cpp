@@ -34,6 +34,9 @@ struct Options {
     double volume = 0.25;
     int sampleRate = 44100;
     bool edgeFade = true;
+    bool naturalStartup = false;
+    double starterSeconds = 1.5;
+    double measurementStart = 0.0;
 };
 
 std::uint16_t readU16(std::istream &stream) {
@@ -159,6 +162,9 @@ Options parseOptions(int argc, char **argv) {
         else if (argument == "--volume") options.volume = std::stod(value());
         else if (argument == "--sample-rate") options.sampleRate = std::stoi(value());
         else if (argument == "--no-edge-fade") options.edgeFade = false;
+        else if (argument == "--natural-startup") options.naturalStartup = true;
+        else if (argument == "--starter-seconds") options.starterSeconds = std::stod(value());
+        else if (argument == "--measurement-start") options.measurementStart = std::stod(value());
         else if (argument == "--help") {
             std::cout
                 << "Usage: engine-sim-headless [options]\n"
@@ -172,7 +178,10 @@ Options parseOptions(int argc, char **argv) {
                 << "  --speed-control VALUE  Engine speed-control input in [0, 1]\n"
                 << "  --volume VALUE         Linear output gain in [0, 1]\n"
                 << "  --sample-rate VALUE    Output sample rate\n"
-                << "  --no-edge-fade        Keep unfaded PCM for loop construction\n";
+                << "  --no-edge-fade        Keep unfaded PCM for loop construction\n"
+                << "  --natural-startup     Crank and run freely without a dynamometer\n"
+                << "  --starter-seconds S   Time to hold the starter in natural mode\n"
+                << "  --measurement-start S Start of the reported RPM measurement\n";
             std::exit(0);
         } else {
             throw std::runtime_error("Unknown argument: " + argument);
@@ -180,10 +189,12 @@ Options parseOptions(int argc, char **argv) {
     }
     if (!std::isfinite(options.rpm) || !std::isfinite(options.duration)
         || !std::isfinite(options.warmup) || !std::isfinite(options.speedControl)
-        || !std::isfinite(options.volume) || options.duration * options.sampleRate < 1
+        || !std::isfinite(options.volume) || !std::isfinite(options.starterSeconds)
+        || !std::isfinite(options.measurementStart) || options.duration * options.sampleRate < 1
         || options.rpm <= 0 || options.duration <= 0 || options.warmup < 0
         || options.sampleRate <= 0 || options.speedControl < 0 || options.speedControl > 1
-        || options.volume < 0 || options.volume > 1) {
+        || options.volume < 0 || options.volume > 1 || options.starterSeconds < 0
+        || options.measurementStart < 0 || options.measurementStart >= options.duration) {
         throw std::runtime_error("Invalid numeric option");
     }
     return options;
@@ -245,11 +256,12 @@ std::vector<std::int16_t> render(const Options &options) {
     engine->setSpeedControl(options.speedControl);
     engine->getIgnitionModule()->m_enabled = true;
     for (int i = 0; i < engine->getCrankshaftCount(); ++i) {
-        engine->getCrankshaft(i)->m_body.v_theta = -units::rpm(options.rpm);
+        engine->getCrankshaft(i)->m_body.v_theta = options.naturalStartup
+            ? 0.0 : -units::rpm(options.rpm);
     }
-    simulator->m_dyno.m_enabled = true;
-    simulator->m_dyno.m_hold = true;
-    simulator->m_dyno.m_rotationSpeed = units::rpm(options.rpm);
+    simulator->m_dyno.m_enabled = !options.naturalStartup;
+    simulator->m_dyno.m_hold = !options.naturalStartup;
+    simulator->m_dyno.m_rotationSpeed = options.naturalStartup ? 0.0 : units::rpm(options.rpm);
     simulator->synthesizer().discardAudioOutput();
 
     // Use integer physics steps and retain only PCM actually produced.
@@ -258,7 +270,13 @@ std::vector<std::int16_t> render(const Options &options) {
     const double blockDuration = std::max(1.0, std::round(frequency * 0.01)) / frequency;
     const size_t requestedSamples = static_cast<size_t>(std::llround(options.duration * options.sampleRate));
     const size_t warmupSamples = static_cast<size_t>(std::llround(options.warmup * options.sampleRate));
+    const size_t measurementStartSamples = static_cast<size_t>(
+        std::llround(options.measurementStart * options.sampleRate));
+    if (measurementStartSamples >= requestedSamples) {
+        throw std::runtime_error("RPM measurement starts after the captured audio");
+    }
     size_t discardedSamples = 0;
+    double simulatedSeconds = 0.0;
     std::vector<std::int16_t> audio;
     audio.reserve(requestedSamples);
     std::vector<std::int16_t> block(1024);
@@ -267,9 +285,12 @@ std::vector<std::int16_t> render(const Options &options) {
     double rpmMaximum = 0.0;
     size_t measuredSamples = 0;
     while (audio.size() < requestedSamples) {
+        simulator->m_starterMotor.m_enabled = options.naturalStartup
+            && simulatedSeconds < options.starterSeconds;
         simulator->startFrame(blockDuration);
         while (simulator->simulateStep()) { }
         simulator->endFrame();
+        simulatedSeconds += blockDuration;
         simulator->synthesizer().pumpAudioRendering();
         const int produced = simulator->readAudioOutput(static_cast<int>(block.size()), block.data());
         if (produced <= 0) throw std::runtime_error("Synthesizer produced no PCM samples");
@@ -277,14 +298,20 @@ std::vector<std::int16_t> render(const Options &options) {
         discardedSamples += skip;
         const size_t count = std::min(static_cast<size_t>(produced) - skip, requestedSamples - audio.size());
         if (count) {
+            const size_t firstSample = audio.size();
             audio.insert(audio.end(), block.begin() + skip, block.begin() + skip + count);
-            const double rpm = engine->getRpm();
-            rpmSum += rpm * count;
-            rpmMinimum = std::min(rpmMinimum, rpm);
-            rpmMaximum = std::max(rpmMaximum, rpm);
-            measuredSamples += count;
+            const size_t firstMeasured = std::max(firstSample, measurementStartSamples);
+            if (firstMeasured < audio.size()) {
+                const size_t measuredCount = audio.size() - firstMeasured;
+                const double rpm = engine->getRpm();
+                rpmSum += rpm * measuredCount;
+                rpmMinimum = std::min(rpmMinimum, rpm);
+                rpmMaximum = std::max(rpmMaximum, rpm);
+                measuredSamples += measuredCount;
+            }
         }
     }
+    if (measuredSamples == 0) throw std::runtime_error("No RPM measurements were captured");
     const double meanRpm = rpmSum / measuredSamples;
     std::cout << "Engine RPM: mean=" << meanRpm << ", min=" << rpmMinimum << ", max=" << rpmMaximum << "\n";
     if (!options.rpmReport.empty()) {
@@ -300,7 +327,9 @@ std::vector<std::int16_t> render(const Options &options) {
             << ",\"sample_rate\":" << options.sampleRate
             << ",\"sample_count\":" << audio.size()
             << ",\"duration\":" << static_cast<double>(audio.size()) / options.sampleRate
-            << ",\"speed_control\":" << options.speedControl << "}\n";
+            << ",\"speed_control\":" << options.speedControl
+            << ",\"render_mode\":\"" << (options.naturalStartup ? "natural_startup" : "fixed_rpm")
+            << "\",\"measurement_start\":" << options.measurementStart << "}\n";
     }
 
     simulator->releaseSimulation();
